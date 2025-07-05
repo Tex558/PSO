@@ -1,20 +1,29 @@
 import tkinter as tk
 from tkinter import messagebox
 import subprocess
+import os
+
+# Obtener ruta absoluta del archivo acciones.sh
+script_dir = os.path.dirname(os.path.abspath(__file__))
+ruta_script = os.path.join(script_dir, 'acciones.sh')
 
 def ejecutar_comando(comando):
     try:
-        resultado = subprocess.run(['bash', './acciones.sh', comando], capture_output=True, text=True)
-        messagebox.showinfo("Resultado", resultado.stdout if resultado.stdout else resultado.stderr)
+        print("Ruta al script:", ruta_script)  # Depuración
+        resultado = subprocess.run(['bash', ruta_script, comando], capture_output=True, text=True)
+
+        if resultado.returncode == 0:
+            messagebox.showinfo("Resultado", resultado.stdout.strip())
+        else:
+            messagebox.showerror("Error en ejecución", resultado.stderr.strip())
     except Exception as e:
+        print("Error en subprocess:", str(e))
         messagebox.showerror("Error", str(e))
 
+# Interfaz simple
 app = tk.Tk()
 app.title("Mini Git - Controlador de Versiones")
 app.geometry("400x400")
-
-etiqueta = tk.Label(app, text="Selecciona una acción:", font=("Arial", 14))
-etiqueta.pack(pady=10)
 
 acciones = [
     ("Diff archivos", "diff"),
@@ -28,7 +37,6 @@ acciones = [
 ]
 
 for texto, cmd in acciones:
-    boton = tk.Button(app, text=texto, width=30, command=lambda c=cmd: ejecutar_comando(c))
-    boton.pack(pady=5)
+    tk.Button(app, text=texto, width=30, command=lambda c=cmd: ejecutar_comando(c)).pack(pady=5)
 
 app.mainloop()

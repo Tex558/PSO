@@ -32,3 +32,4 @@ case "$accion" in
         echo "Acción no reconocida: $accion"
         ;;
 esac
+    
