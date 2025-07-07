@@ -2,107 +2,165 @@
 
 accion=$1
 archivo=$2
+param3=$3
 backup_dir="./backups"
-remote_drive="google_drive:/mini-git_backups"
+repo_dir=".mini-git"
+log_file="$repo_dir/log/log.txt"
+hashes_file="$repo_dir/hashes/hashes.txt"
 
-# Verifica si el archivo está vacío
-if [ -z "$archivo" ]; then
-    echo "ERROR: No se ha especificado un archivo." >&2  # Redirigir error a stderr
+if [ "$accion" != "init" ] && [ ! -d "$repo_dir" ]; then
+    echo "ERROR: Repositorio no inicializado. Ejecute 'init' primero." >&2
     exit 1
 fi
 
 case "$accion" in
     init)
-        mkdir -p .mini-git/versions
-        mkdir -p .mini-git/log
-        mkdir -p .mini-git/hashes
-        mkdir -p .mini-git/branches
+        mkdir -p $repo_dir/{versions,log,hashes,branches}
+        touch "$log_file" "$hashes_file"
         echo "Repositorio inicializado"
         ;;
     save_version)
-        # Guardar versión actual del archivo
-        version=$(date +%Y%m%d%H%M%S)
-        cp "$archivo" .mini-git/versions/"$archivo"_v$version.txt
-        echo "Guardada nueva versión $archivo_v$version.txt" >> .mini-git/log.txt
-        sha256sum "$archivo" >> .mini-git/hashes.txt
+        if [ -z "$archivo" ] || [ -z "$param3" ]; then
+            echo "ERROR: Faltan parámetros. Uso: save_version <archivo> <nombre_version>" >&2
+            exit 1
+        fi
+        
+        if [ ! -f "$archivo" ]; then
+            echo "ERROR: El archivo $archivo no existe" >&2
+            exit 1
+        fi
+        
+        cp "$archivo" "$repo_dir/versions/$param3"
+        
+        timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+        hash_value=$(sha256sum "$archivo" | awk '{print $1}')
+        echo "$timestamp|save_version|$param3|$hash_value" >> "$log_file"
+        echo "$param3 $hash_value" >> "$hashes_file"
+        
+        echo "Versión guardada: $param3"
         ;;
     compare)
-        # Comparar el archivo con la versión guardada
-        archivo_version=$3
-        diff "$archivo" ".mini-git/versions/$archivo_version"
+        if [ -z "$archivo" ] || [ -z "$param3" ]; then
+            echo "ERROR: Faltan parámetros. Uso: compare <archivo_actual> <archivo_version>" >&2
+            exit 1
+        fi
+        
+        if [ ! -f "$param3" ]; then
+            echo "ERROR: La versión $param3 no existe" >&2
+            exit 1
+        fi
+        
+        diff --color -u "$param3" "$archivo"
         ;;
     history)
-        # Mostrar historial de commits
-        cat .mini-git/log.txt
+        if [ ! -f "$log_file" ]; then
+            echo "No hay historial disponible"
+            exit 0
+        fi
+        column -t -s "|" "$log_file"
         ;;
     md5sum)
-        # Generar MD5
+        if [ -z "$archivo" ]; then
+            echo "ERROR: Debe especificar un archivo" >&2
+            exit 1
+        fi
+        if [ ! -f "$archivo" ]; then
+            echo "ERROR: El archivo $archivo no existe" >&2
+            exit 1
+        fi
         md5sum "$archivo"
         ;;
     sha256sum)
-        # Generar SHA256
+        if [ -z "$archivo" ]; then
+            echo "ERROR: Debe especificar un archivo" >&2
+            exit 1
+        fi
+        if [ ! -f "$archivo" ]; then
+            echo "ERROR: El archivo $archivo no existe" >&2
+            exit 1
+        fi
         sha256sum "$archivo"
         ;;
     cat)
-        # Mostrar contenido de archivo
+        if [ -z "$archivo" ]; then
+            echo "ERROR: Debe especificar un archivo" >&2
+            exit 1
+        fi
+        if [ ! -f "$archivo" ]; then
+            echo "ERROR: El archivo $archivo no existe" >&2
+            exit 1
+        fi
         cat "$archivo"
         ;;
     echo)
-        # Escribir en archivo
-        texto=$3
-        echo "$texto" >> "$archivo"
+        if [ -z "$archivo" ] || [ -z "$param3" ]; then
+            echo "ERROR: Uso: echo <archivo> <texto>" >&2
+            exit 1
+        fi
+        texto_limpio=$(echo "$param3" | sed -e 's/^"//' -e 's/"$//')
+        echo "$texto_limpio" >> "$archivo"
+        echo "Texto añadido a $archivo"
         ;;
     create_branch)
-        # Crear una rama
-        branch_name=$3
-        if [ -z "$branch_name" ]; then
-            echo "Se requiere el nombre de la rama"
+        if [ -z "$archivo" ] || [ -z "$param3" ]; then
+            echo "ERROR: Uso: create_branch <archivo> <nombre_rama>" >&2
             exit 1
         fi
-        cp "$archivo" ".mini-git/branches/$branch_name"
-        echo "Rama '$branch_name' creada"
+        
+        if [ ! -f "$archivo" ]; then
+            echo "ERROR: El archivo $archivo no existe" >&2
+            exit 1
+        fi
+        
+        cp "$archivo" "$repo_dir/branches/$param3"
+        echo "$(date +"%Y-%m-%d %H:%M:%S")|create_branch|$param3" >> "$log_file"
+        echo "Rama creada: $param3"
         ;;
     merge_branch)
-        # Fusionar una rama
-        branch_name=$3
-        if [ -z "$branch_name" ]; then
-            echo "Se requiere el nombre de la rama"
+        if [ -z "$archivo" ] || [ -z "$param3" ]; then
+            echo "ERROR: Uso: merge_branch <archivo_destino> <nombre_rama>" >&2
             exit 1
         fi
-        cp ".mini-git/branches/$branch_name" "$archivo"
-        echo "Rama '$branch_name' fusionada"
+        
+        if [ ! -f "$repo_dir/branches/$param3" ]; then
+            echo "ERROR: La rama $param3 no existe" >&2
+            exit 1
+        fi
+        
+        cp "$repo_dir/branches/$param3" "$archivo"
+        echo "$(date +"%Y-%m-%d %H:%M:%S")|merge_branch|$param3" >> "$log_file"
+        echo "Rama fusionada: $param3 → $(basename "$archivo")"
         ;;
     compress_versions)
-        # Comprimir versiones viejas
-        tar -czf .mini-git/versions.tar.gz .mini-git/versions/*
+        tar -czf "$repo_dir/versions.tar.gz" "$repo_dir/versions"/*
         echo "Versiones comprimidas en versions.tar.gz"
         ;;
     export_csv)
-        # Exportar historial a CSV
-        while IFS= read -r line
-        do
-            fecha=$(echo $line | awk '{print $1}')
-            accion=$(echo $line | awk '{print $2}')
-            archivo=$(echo $line | awk '{print $3}')
-            hash=$(echo $line | awk '{print $4}')
-            echo "$fecha,$accion,$archivo,$hash" >> historial.csv
-        done < .mini-git/log.txt
+        if [ ! -f "$log_file" ]; then
+            echo "No hay historial para exportar"
+            exit 0
+        fi
+        awk -F "|" '{print $1","$2","$3","$4}' "$log_file" > historial.csv
         echo "Historial exportado a historial.csv"
         ;;
     backup_local)
-        # Crear un backup local de .mini-git
         fecha=$(date +%Y%m%d%H%M%S)
         mkdir -p "$backup_dir"
-        cp -r .mini-git "$backup_dir/mini-git_backup_$fecha"
-        echo "Backup local realizado con éxito en $backup_dir/mini-git_backup_$fecha"
+        tar -czf "$backup_dir/mini-git_backup_$fecha.tar.gz" "$repo_dir"
+        echo "Backup local creado: $backup_dir/mini-git_backup_$fecha.tar.gz"
         ;;
     backup_cloud)
-        # Copiar archivos del repositorio a Google Drive usando rclone
+        if ! command -v rclone &> /dev/null; then
+            echo "ERROR: rclone no está instalado" >&2
+            exit 1
+        fi
         fecha=$(date +%Y%m%d%H%M%S)
-        rclone copy .mini-git $remote_drive/mini-git_backup_$fecha --progress
-        echo "Backup realizado en Google Drive como mini-git_backup_$fecha"
+        rclone copy "$repo_dir" "google_drive:/mini-git_backups/backup_$fecha" --progress
+        echo "Backup en Google Drive creado: backup_$fecha"
         ;;
     *)
-        echo "ERROR: Acción no reconocida: $accion" >&2  # Redirigir error a stderr
+        echo "ERROR: Acción no reconocida: $accion" >&2
+        echo "Acciones disponibles: init, save_version, compare, history, md5sum, sha256sum, cat, echo, create_branch, merge_branch, compress_versions, export_csv, backup_local, backup_cloud" >&2
+        exit 1
         ;;
 esac
